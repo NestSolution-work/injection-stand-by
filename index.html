@@ -1,0 +1,256 @@
+function doGet(e) {
+  // 매개변수 안전하게 처리
+  var action = '';
+  if (e && e.parameter && e.parameter.action) {
+    action = e.parameter.action;
+  }
+  
+  // API 요청 처리 (GitHub Pages용 - CORS 지원)
+  if (action === 'getWaitingPatients') {
+    try {
+      var patients = getWaitingPatients();
+      
+      // CORS 헤더와 함께 JSON 응답 반환
+      return ContentService
+        .createTextOutput(JSON.stringify(patients))
+        .setMimeType(ContentService.MimeType.JSON);
+        
+    } catch (error) {
+      console.error('API 오류:', error);
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          error: error.message,
+          timestamp: new Date().toISOString()
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+  
+  // 기본 HTML 웹앱 반환 (기존 기능 유지)
+  var htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>대기환자 안내</title>
+<style>
+body {
+  font-family: "Malgun Gothic", Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  color: #333;
+  min-height: 100vh;
+}
+.container {
+  max-width: 95%;
+  margin: 0 auto;
+  position: relative;
+  padding: 0 2.5%;
+}
+h1 {
+  text-align: center;
+  font-size: 4.2em;
+  margin-bottom: 25px;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+  color: #2c3e50;
+}
+.clinic-experience {
+  text-align: center;
+  font-size: 1.4em;
+  color: #2c3e50;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+.subtitle-notice {
+  text-align: center;
+  font-size: 1.3em;
+  color: #6c757d;
+  margin-bottom: 15px;
+  padding: 0 20px;
+  line-height: 1.4;
+}
+.sections-container {
+  display: flex;
+  flex-direction: row;
+  gap: 30px;
+  align-items: flex-start;
+  width: 100%;
+}
+.section {
+  background: rgba(255,255,255,0.8);
+  border-radius: 15px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  flex: 1;
+  min-width: 400px;
+}
+.section h2 {
+  font-size: 2.2em;
+  margin-bottom: 10px;
+  text-align: center;
+  color: #2c3e50;
+}
+.patient-card {
+  background: rgba(255,255,255,0.9);
+  border-radius: 10px;
+  padding: 15px;
+  text-align: center;
+  margin: 8px auto;
+  width: 90%;
+  max-width: 350px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.patient-name {
+  font-size: 1.6em;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+.patient-status {
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 1.1em;
+  font-weight: bold;
+}
+.status-waiting {
+  background: #ff6b6b;
+  color: white;
+}
+.status-in-progress {
+  background: #4ecdc4;
+  color: white;
+}
+.refresh-btn {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+@media (max-width: 768px) {
+  .sections-container {
+    flex-direction: column;
+  }
+  .section {
+    min-width: auto;
+  }
+  h1 {
+    font-size: 2.5em;
+  }
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🏥 반듯한정형외과 주사대기 안내</h1>
+<div class="clinic-experience">3500례 이상 주사치료 전문의 풍부한 임상경험</div>
+<div class="subtitle-notice">환자분 개별 시술 시간은 평균 <strong>10~15분 내외</strong>이며, 순서에 따라 다소 대기 시간이 발생할 수 있습니다.</div>
+<div class="sections-container">
+<div class="section" id="ultrasound-section">
+<h2>💉 정밀 초음파 주사</h2>
+<div id="ultrasound-patients"></div>
+</div>
+<div class="section" id="carm-section">
+<h2>📋 실시간 영상유도하 주사</h2>
+<div id="carm-patients"></div>
+</div>
+<div class="section" id="treatment-section">
+<h2>🔬 처치&검사</h2>
+<div id="treatment-patients"></div>
+</div>
+</div>
+</div>
+<button class="refresh-btn" onclick="loadPatients()" id="refresh-btn">🔄</button>
+
+<script>
+function loadPatients() {
+  google.script.run
+    .withSuccessHandler(displayPatients)
+    .withFailureHandler(function(error) {
+      console.error('오류:', error);
+    })
+    .getWaitingPatients();
+}
+
+function displayPatients(patients) {
+  var ultrasoundContainer = document.getElementById('ultrasound-patients');
+  var carmContainer = document.getElementById('carm-patients');
+  var treatmentContainer = document.getElementById('treatment-patients');
+  
+  ultrasoundContainer.innerHTML = '';
+  carmContainer.innerHTML = '';
+  treatmentContainer.innerHTML = '';
+  
+  for (var i = 0; i < patients.length; i++) {
+    var patient = patients[i];
+    var card = createPatientCard(patient);
+    
+    if (patient.examType.indexOf('초음파') >= 0) {
+      ultrasoundContainer.appendChild(card);
+    } else if (patient.examType.indexOf('C-arm') >= 0 || patient.examType.indexOf('영상유도') >= 0) {
+      carmContainer.appendChild(card);
+    } else {
+      treatmentContainer.appendChild(card);
+    }
+  }
+}
+
+function createPatientCard(patient) {
+  var card = document.createElement('div');
+  card.className = 'patient-card';
+  
+  var statusClass = patient.status === '대기' ? 'status-waiting' : 'status-in-progress';
+  var statusText = patient.status === '대기' ? '대기중' : '진행중';
+  
+  var displayName = patient.name.length > 2 ? 
+    patient.name.charAt(0) + '○' + patient.name.charAt(patient.name.length - 1) : 
+    patient.name;
+  
+  card.innerHTML = 
+    '<div class="patient-name">' + displayName + '</div>' +
+    '<div class="patient-status ' + statusClass + '">' + statusText + '</div>';
+  
+  return card;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  loadPatients();
+  setInterval(loadPatients, 10000);
+});
+</script>
+</body>
+</html>`;
+  
+  return HtmlService.createHtmlOutput(htmlContent).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function getWaitingPatients() {
+  try {
+    var sheet = SpreadsheetApp.getActiveSheet();
+    var data = sheet.getDataRange().getValues();
+    var patients = [];
+    
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      if (row[1] && row[3] && row[4] && row[4] !== '완료') {
+        patients.push({
+          name: String(row[1]),
+          gender: String(row[2] || ''),
+          examType: String(row[3]),
+          status: String(row[4])
+        });
+      }
+    }
+    
+    return patients;
+  } catch (error) {
+    throw new Error('데이터 오류: ' + error.message);
+  }
+}
